@@ -16,6 +16,9 @@
 .page-heading h1 { font-size: 30px; }
 @media (max-width: 700px) { .page-heading h1 { font-size: 25px; } }
 </style>
+<style>
+.learning-guide{display:grid;gap:12px}.learning-stage{padding:14px;background:#f7f7f2;border:1px solid #e9e9e1;border-radius:4px}.learning-stage h4{margin:0 0 7px;color:var(--green-dark);font-size:12px}.learning-stage p,.learning-stage li{margin:0;color:#69736a;font-size:11px;line-height:1.85}.learning-stage ol{margin:7px 0 0;padding-left:20px}.learning-stage .stage-label{display:block;margin-bottom:5px;color:var(--red);font:10px 'DM Mono',monospace;letter-spacing:.08em}
+</style>
 </head>
 <body>
 <div class="app">
@@ -71,6 +74,47 @@ async function requestEvaluation(d){const res=await fetch(settings.endpoint,{met
 function render(r,demo){$('#pane-answer').innerHTML=`<p class="kicker">MODEL RESPONSE / ${demo?'DEMO':'AI'}</p><h3 class="section-title">模範解答例</h3><div class="answer">${esc(r.modelAnswer)}</div><div class="note">模範解答は一つの考え方を示す例です。課題文・設問・授業方針に合わせて教員が確認してください。${demo?' デモ版は汎用構成例です。':''}</div>`;$('#pane-rubric').innerHTML=`<p class="kicker">ASSESSMENT CRITERIA</p><h3 class="section-title">評価ルーブリック</h3><div class="rubrics">${r.rubric.map(x=>`<article class="rubric"><div class="rubric-top"><span class="rubric-name">${esc(x.criterion)}</span><span class="points">${esc(x.points)} 点</span></div><p>${esc(x.description)}</p></article>`).join('')}</div>`;$('#pane-grade').innerHTML=`<p class="kicker">FEEDBACK / ${demo?'REFERENCE ONLY':'FORMATIVE'}</p><h3 class="section-title">採点・添削</h3><div class="score"><div class="score-num">${esc(r.totalScore)}<span> / ${esc(r.maxScore)}</span></div><div><p class="score-label">${demo?'ローカル簡易評価':'総合評価'}</p><p class="score-summary">${esc(r.summary)}</p></div></div><div>${r.evaluations.map(x=>`<div class="eval"><div class="eval-top"><span>${esc(x.criterion)}</span><span class="eval-score">${esc(x.score)} / ${esc(x.maxScore)}</span></div><p>${esc(x.comment)}</p></div>`).join('')}</div><div class="feedback"><h3>良かった点</h3><p>${esc(r.strengths)}</p></div><div class="feedback"><h3>次に見直す点</h3><p>${esc(r.improvements)}</p></div><div class="feedback"><h3>書き換え例</h3><p>${esc(r.rewriteExample)}</p></div>${demo?'<div class="note">この点数は語数と表層的な表現のみから算出した参考値です。実際の採点に使用しないでください。</div>':''}`;$('#resultMode').textContent=demo?'ローカル簡易評価':`AI評価 · ${settings.model}`;activate('tab-answer')}
 $('#generate').addEventListener('click',async()=>{const d={prompt:fields.prompt.value.trim(),question:fields.question.value.trim(),essay:fields.essay.value.trim(),minWords:Math.max(0,Number(fields.minWords.value)||0),maxWords:Math.max(1,Number(fields.maxWords.value)||1)};if(!d.prompt||!d.question||!d.essay){toast('課題文・設問・答案をすべて入力してください。');return}if(d.minWords>d.maxWords){toast('字数の下限は上限以下にしてください。');return}const btn=$('#generate'),connected=Boolean(settings.endpoint&&settings.model&&apiKey);btn.disabled=true;btn.innerHTML='<span class="spinner" style="width:15px;height:15px;margin:0;border-width:2px;border-color:#ffffff66;border-top-color:#fff"></span>評価レポートを作成中…';output.querySelectorAll('.pane').forEach(p=>p.hidden=true);const loading=document.createElement('div');loading.className='loading';loading.innerHTML='<div class="spinner"></div><span>課題と答案を読み込んでいます</span>';output.append(loading);try{const result=connected?await requestEvaluation(d):localEvaluation(d);loading.remove();$('.empty').hidden=true;render(result,!connected);if(!connected)toast('デモ評価を作成しました。内容の採点にはAI接続を設定してください。')}catch(error){loading.remove();toast(`評価を作成できませんでした: ${error.message}`);$('.empty').hidden=false}finally{btn.disabled=false;btn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3 1.9 5.8L20 11l-6.1 2.2L12 19l-2-5.8L4 11l6-2.2L12 3Z"/><path d="m19 15 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z"/></svg>模範解答・基準・採点を作成'}});
 function openSettings(){$('#apiEndpoint').value=settings.endpoint;$('#modelName').value=settings.model;$('#apiKey').value=apiKey;dialog.showModal()}$('#openSettings').addEventListener('click',openSettings);$('#openSettingsNav').addEventListener('click',openSettings);$('#closeSettings').addEventListener('click',()=>dialog.close());$('#settingsForm').addEventListener('submit',e=>{e.preventDefault();settings={endpoint:$('#apiEndpoint').value.trim(),model:$('#modelName').value.trim()||defaults.model};apiKey=$('#apiKey').value.trim();localStorage.setItem('essay-feedback-settings',JSON.stringify(settings));updateConnection();dialog.close();toast(apiKey?'AI接続設定を保存しました。キーはこのタブ内だけで保持します。':'設定を保存しました。APIキーを入力するとAI評価を利用できます。')});$('#clearSettings').addEventListener('click',()=>{settings={...defaults};apiKey='';localStorage.removeItem('essay-feedback-settings');updateConnection();dialog.close();toast('AI接続を解除しました。')});updateConnection();
+</script>
+<script>
+let learningGuideSignature='';
+const baseBuildPrompt=buildPrompt;
+buildPrompt=d=>`${baseBuildPrompt(d)}\n「strengths」には答案中の具体的な達成を、「improvements」には次の答案で最初に見直す一つの点を、書き手が自分で考え直せる問いを添えて示してください。「rewriteExample」は完成答案ではなく、主張・根拠・理由をつなぐ一〜二文の書き換え例にしてください。`;
+function renderLearningGuide(){
+  const gradePane=$('#pane-grade');
+  const score=gradePane.querySelector('.score');
+  if(!score)return;
+  const feedbacks=gradePane.querySelectorAll('.feedback p');
+  const strengths=feedbacks[0]?.textContent||'答案の中で、根拠と主張がつながっている部分を一つ見つけましょう。';
+  const improvements=feedbacks[1]?.textContent||'主張を支える根拠を一つ選び、理由を一文で補いましょう。';
+  const rewrite=feedbacks[2]?.textContent||'「根拠から何が言えるか」を一文で書き足してみましょう。';
+  const signature=[score.textContent,strengths,improvements,rewrite].join('|');
+  if(signature===learningGuideSignature)return;
+  learningGuideSignature=signature;
+
+  let tab=$('#tab-guide'),pane=$('#pane-guide');
+  if(!tab){
+    tab=document.createElement('button');
+    tab.className='tab';
+    tab.id='tab-guide';
+    tab.type='button';
+    tab.setAttribute('role','tab');
+    tab.setAttribute('aria-selected','false');
+    tab.setAttribute('aria-controls','pane-guide');
+    tab.textContent='学習の進め方';
+    $('.tabs').append(tab);
+    tab.addEventListener('click',()=>activate(tab.id));
+    pane=document.createElement('div');
+    pane.className='pane';
+    pane.id='pane-guide';
+    pane.setAttribute('role','tabpanel');
+    pane.setAttribute('aria-labelledby','tab-guide');
+    pane.hidden=true;
+    output.append(pane);
+  }
+
+  pane.innerHTML=`<p class="kicker">LEARNING PATH / ${$('#resultMode').textContent}</p><h3 class="section-title">次の答案につなげる</h3><div class="learning-guide"><section class="learning-stage"><span class="stage-label">FEED UP / 目標を確かめる</span><h4>この答案で目指すこと</h4><p>設問「${esc(fields.question.value.trim())}」に対し、課題文を根拠に自分の主張・理由・具体例・結論をつなげます。</p></section><section class="learning-stage"><span class="stage-label">FEEDBACK / 現在地を知る</span><h4>今できていることと、伸ばす点</h4><p><strong>できていること：</strong>${esc(strengths)}</p><p><strong>次に見直す点：</strong>${esc(improvements)}</p></section><section class="learning-stage"><span class="stage-label">SCAFFOLDING / 一段ずつ組み立てる</span><h4>書き直す前の三つの問い</h4><ol><li>設問への答えを一文で書くと、どのような主張になりますか。</li><li>課題文または具体例のどの部分が、その主張の根拠になりますか。</li><li>その根拠から主張へ、どのような理由の一文を足せますか。</li></ol></section><section class="learning-stage"><span class="stage-label">FEED FORWARD / 次の一手</span><h4>まず一段落だけ書き直す</h4><p>${esc(rewrite)}</p><p>上の例をそのまま写すのではなく、自分の主張と根拠に置き換えてから、次の段落へ進みましょう。</p></section></div>${$('#resultMode').textContent.includes('簡易')?'<div class="note">この学習の進め方はローカル簡易評価から作成した参考です。内容に即した指導にはAI評価または教員の確認を利用してください。</div>':''}`;
+}
+new MutationObserver(renderLearningGuide).observe(output,{childList:true,subtree:true});
 </script>
 </body>
 </html>
