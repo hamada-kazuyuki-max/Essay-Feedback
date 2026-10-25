@@ -19,6 +19,9 @@
 <style>
 .learning-guide{display:grid;gap:12px}.learning-stage{padding:14px;background:#f7f7f2;border:1px solid #e9e9e1;border-radius:4px}.learning-stage h4{margin:0 0 7px;color:var(--green-dark);font-size:12px}.learning-stage p,.learning-stage li{margin:0;color:#69736a;font-size:11px;line-height:1.85}.learning-stage ol{margin:7px 0 0;padding-left:20px}.learning-stage .stage-label{display:block;margin-bottom:5px;color:var(--red);font:10px 'DM Mono',monospace;letter-spacing:.08em}
 </style>
+<style>
+.word-count{display:flex;align-items:baseline;gap:5px}.word-count-status{font:10px 'DM Sans','Noto Sans JP',sans-serif}.word-count-status.short{color:var(--gold)}.word-count-status.in-range{color:var(--green)}.word-count-status.over,.word-count-status.invalid{color:var(--red)}.freshness{color:var(--red);font-size:10px;font-weight:600}
+</style>
 </head>
 <body>
 <div class="app">
@@ -41,12 +44,12 @@
           <div class="field split"><div><label class="field-label" for="minWords">字数・下限</label><input id="minWords" type="number" min="0" max="10000" value="400"></div><div><label class="field-label" for="maxWords">字数・上限</label><input id="maxWords" type="number" min="1" max="10000" value="600"></div></div>
         </div></section>
         <section class="panel" aria-labelledby="essayHeading"><div class="panel-head"><h2 class="panel-title" id="essayHeading"><span class="step">02</span>答案を入力</h2><span class="hint">日本語の答案に対応</span></div><div class="panel-body">
-          <div class="field"><label class="field-label" for="essay">受験者の答案</label><textarea class="essay" id="essay" placeholder="答案を貼り付けてください"></textarea><div class="essay-meta"><span>文字数（空白を除く）</span><strong id="charCount">0 字</strong></div></div>
+          <div class="field"><label class="field-label" for="essay">受験者の答案</label><textarea class="essay" id="essay" placeholder="答案を貼り付けてください"></textarea><div class="essay-meta"><span>文字数（空白を除く）</span><span class="word-count"><strong id="charCount">0 字</strong><span class="word-count-status short" id="wordCountStatus" aria-live="polite">下限まであと400字</span></span></div></div>
           <button class="generate" id="generate" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3 1.9 5.8L20 11l-6.1 2.2L12 19l-2-5.8L4 11l6-2.2L12 3Z"/><path d="m19 15 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z"/></svg>模範解答・基準・採点を作成</button>
           <p class="privacy">AI利用時は入力内容が設定したAPI提供元へ送信されます。デモモードではデータを送信しません。</p>
         </div></section>
       </div>
-      <section class="panel results" aria-labelledby="resultsHeading"><div class="panel-head results-head"><h2 class="panel-title" id="resultsHeading"><span class="step">03</span>評価レポート</h2><span class="hint" id="resultMode">生成結果</span></div>
+      <section class="panel results" aria-labelledby="resultsHeading"><div class="panel-head results-head"><h2 class="panel-title" id="resultsHeading"><span class="step">03</span>評価レポート</h2><span class="hint" id="resultMode">生成結果</span><span class="freshness" id="evaluationStatus" aria-live="polite" title="入力が変更されています。再評価してください" hidden>再評価が必要</span></div>
         <div class="tabs" role="tablist" aria-label="評価レポート"><button class="tab" id="tab-answer" type="button" role="tab" aria-selected="true" aria-controls="pane-answer">模範解答例</button><button class="tab" id="tab-rubric" type="button" role="tab" aria-selected="false" aria-controls="pane-rubric">評価ルーブリック</button><button class="tab" id="tab-grade" type="button" role="tab" aria-selected="false" aria-controls="pane-grade">採点・添削</button></div>
         <div class="result-body" id="resultContent"><div class="empty"><div class="empty-icon"><svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 4h7l4 4v12H6V5a1 1 0 0 1 1-1Z"/><path d="M14 4v5h5M9 13h6M9 17h4"/></svg></div><h3>答案を、次の一歩につなげる。</h3><p>課題文と答案を入力して作成すると、模範解答例・評価基準・具体的な添削コメントがここに表示されます。</p></div><div class="pane" id="pane-answer" role="tabpanel" aria-labelledby="tab-answer" hidden></div><div class="pane" id="pane-rubric" role="tabpanel" aria-labelledby="tab-rubric" hidden></div><div class="pane" id="pane-grade" role="tabpanel" aria-labelledby="tab-grade" hidden></div></div>
       </section>
@@ -58,13 +61,17 @@
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <script>
 const $=s=>document.querySelector(s),fields={prompt:$('#prompt'),question:$('#question'),essay:$('#essay'),minWords:$('#minWords'),maxWords:$('#maxWords')},output=$('#resultContent'),dialog=$('#settingsDialog');
-let apiKey='',toastTimer;const defaults={endpoint:'',model:'gpt-4o-mini'};
+let apiKey='',toastTimer,evaluatedInput=null;const defaults={endpoint:'',model:'gpt-4o-mini'};
 function readSettings(){try{return {...defaults,...JSON.parse(localStorage.getItem('essay-feedback-settings')||'{}')}}catch{return {...defaults}}}
 let settings=readSettings();
 function toast(message){const el=$('#toast');el.textContent=message;el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.hidden=true,4200)}
 function updateConnection(){const connected=Boolean(settings.endpoint&&settings.model&&apiKey);$('#connectionStatus').classList.toggle('ready',connected);$('#connectionLabel').textContent=connected?`AI接続: ${settings.model}`:'デモモード';$('#resultMode').textContent=connected?'AI評価':'ローカル簡易評価'}
-function count(text){return text.replace(/\s/g,'').length}fields.essay.addEventListener('input',()=>$('#charCount').textContent=`${count(fields.essay.value)} 字`);
-$('#loadSample').addEventListener('click',()=>{fields.prompt.value='地域の図書館や公民館では、住民が集まり、世代や立場を越えて交流する機会が生まれている。一方、オンラインで情報を得ることが容易になり、地域の施設を利用する人は減少している。地域のつながりを保つためには、施設を単に情報提供の場とするのではなく、住民が互いの経験や知識を持ち寄り、課題について話し合える場として活用することが重要だという意見がある。';fields.question.value='地域社会において、人々が対話する場を設ける意義について、課題文を踏まえ、あなたの考えを具体例とともに論じなさい。';fields.essay.value='地域社会で対話の場を設ける意義は、異なる立場の人が互いの事情を知り、共通の課題を自分たちの問題として考えられる点にある。課題文にある図書館や公民館は、年齢や職業を問わず住民が集まれるため、オンラインだけでは生まれにくい偶然の出会いや会話を生み出す。\n\n例えば、地域の図書館で高校生と高齢者が一緒に防災マップを作る活動を考えたい。高校生はスマートフォンで地図情報を調べ、高齢者は過去の災害経験や危険な場所を共有できる。異なる知識を組み合わせることで、実際の生活に役立つ備えにつながるだろう。\n\nただし、施設を開くだけでは対話は始まらない。誰でも参加しやすい時間や企画を工夫し、意見を否定せずに聞く進行役も必要である。オンラインの便利さを活用しながら、顔を合わせて話せる場を整えることが、地域のつながりを保つために大切だ。';$('#charCount').textContent=`${count(fields.essay.value)} 字`;toast('サンプル課題を読み込みました。')});
+function count(text){return text.replace(/\s/g,'').length}
+function currentInput(){return{prompt:fields.prompt.value.trim(),question:fields.question.value.trim(),essay:fields.essay.value.trim(),minWords:Math.max(0,Number(fields.minWords.value)||0),maxWords:Math.max(1,Number(fields.maxWords.value)||1)}}
+function updateWordCount(){const total=count(fields.essay.value),minimum=Math.max(0,Number(fields.minWords.value)||0),maximum=Math.max(1,Number(fields.maxWords.value)||1),status=$('#wordCountStatus');$('#charCount').textContent=`${total} 字`;if(minimum>maximum){status.textContent='字数の下限・上限を確認';status.className='word-count-status invalid'}else if(total<minimum){status.textContent=`下限まであと${minimum-total}字`;status.className='word-count-status short'}else if(total>maximum){status.textContent=`上限を${total-maximum}字超過`;status.className='word-count-status over'}else{status.textContent='指定範囲内';status.className='word-count-status in-range'}}
+function updateEvaluationFreshness(){const isStale=evaluatedInput!==null&&JSON.stringify(currentInput())!==evaluatedInput;$('#evaluationStatus').hidden=!isStale}
+Object.values(fields).forEach(field=>field.addEventListener('input',()=>{updateWordCount();updateEvaluationFreshness()}));
+$('#loadSample').addEventListener('click',()=>{if([fields.prompt,fields.question,fields.essay].some(field=>field.value.trim())&&!confirm('入力中の課題・設問・答案をサンプルで置き換えます。よろしいですか？'))return;fields.prompt.value='地域の図書館や公民館では、住民が集まり、世代や立場を越えて交流する機会が生まれている。一方、オンラインで情報を得ることが容易になり、地域の施設を利用する人は減少している。地域のつながりを保つためには、施設を単に情報提供の場とするのではなく、住民が互いの経験や知識を持ち寄り、課題について話し合える場として活用することが重要だという意見がある。';fields.question.value='地域社会において、人々が対話する場を設ける意義について、課題文を踏まえ、あなたの考えを具体例とともに論じなさい。';fields.essay.value='地域社会で対話の場を設ける意義は、異なる立場の人が互いの事情を知り、共通の課題を自分たちの問題として考えられる点にある。課題文にある図書館や公民館は、年齢や職業を問わず住民が集まれるため、オンラインだけでは生まれにくい偶然の出会いや会話を生み出す。\n\n例えば、地域の図書館で高校生と高齢者が一緒に防災マップを作る活動を考えたい。高校生はスマートフォンで地図情報を調べ、高齢者は過去の災害経験や危険な場所を共有できる。異なる知識を組み合わせることで、実際の生活に役立つ備えにつながるだろう。\n\nただし、施設を開くだけでは対話は始まらない。誰でも参加しやすい時間や企画を工夫し、意見を否定せずに聞く進行役も必要である。オンラインの便利さを活用しながら、顔を合わせて話せる場を整えることが、地域のつながりを保つために大切だ。';updateWordCount();updateEvaluationFreshness();toast('サンプル課題を読み込みました。')});
 function activate(id){document.querySelectorAll('.tab').forEach(tab=>{const active=tab.id===id;tab.setAttribute('aria-selected',String(active));$(`#pane-${tab.id.slice(4)}`).hidden=!active})}document.querySelectorAll('.tab').forEach(tab=>tab.addEventListener('click',()=>activate(tab.id)));
 function esc(value=''){return String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function buildPrompt(d){return `あなたは日本語の小論文指導に熟練した評価者です。以下を公平に評価し、課題文にない事実を捏造しないでください。採点は形成的評価とし、答案の書き手を尊重してください。模範解答は唯一の正解ではなく一例です。\n【課題文・資料】\n${d.prompt}\n【設問】\n${d.question}\n【字数条件】${d.minWords}〜${d.maxWords}字\n【受験者の答案】\n${d.essay}\nJSONだけを返してください。Markdownや説明文は不要です。\n{"modelAnswer":"論旨・具体例・結論を含む模範解答例","rubric":[{"criterion":"評価項目","points":25,"description":"満点に相当する特徴"}],"totalScore":0,"maxScore":100,"summary":"全体評価","evaluations":[{"criterion":"評価項目","score":0,"maxScore":25,"comment":"答案の具体的記述に基づく評価"}],"strengths":"良い点","improvements":"改善点と具体案","rewriteExample":"一部の書き換え例"}\nrubricとevaluationsは対応する4項目、各25点、合計100点にしてください。設問への応答、論理、根拠、表現を評価し、字数だけに偏らないでください。字数条件から外れた場合は影響を説明してください。`}
@@ -72,7 +79,35 @@ function localEvaluation(d){const n=count(d.essay),structured=/例えば|たと�
 function normalize(r){if(!r||!Array.isArray(r.rubric)||!Array.isArray(r.evaluations))throw Error('評価結果の形式が正しくありません。モデル名やAPI応答形式を確認してください。');return{modelAnswer:String(r.modelAnswer||''),rubric:r.rubric,totalScore:Number(r.totalScore)||0,maxScore:Number(r.maxScore)||100,summary:String(r.summary||''),evaluations:r.evaluations,strengths:String(r.strengths||''),improvements:String(r.improvements||''),rewriteExample:String(r.rewriteExample||'')}}
 async function requestEvaluation(d){const res=await fetch(settings.endpoint,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:settings.model,temperature:.3,messages:[{role:'system',content:'あなたは公平で具体的な日本語小論文の評価者です。指示に従ってJSONのみを返します。'},{role:'user',content:buildPrompt(d)}]})});const payload=await res.json().catch(()=>({}));if(!res.ok)throw Error(payload.error?.message||`APIエラー (${res.status})`);const content=payload.choices?.[0]?.message?.content;if(!content)throw Error('API応答に評価結果がありません。');return normalize(JSON.parse(content.replace(/^\s*```(?:json)?\s*/i,'').replace(/\s*```\s*$/,'')))}
 function render(r,demo){$('#pane-answer').innerHTML=`<p class="kicker">MODEL RESPONSE / ${demo?'DEMO':'AI'}</p><h3 class="section-title">模範解答例</h3><div class="answer">${esc(r.modelAnswer)}</div><div class="note">模範解答は一つの考え方を示す例です。課題文・設問・授業方針に合わせて教員が確認してください。${demo?' デモ版は汎用構成例です。':''}</div>`;$('#pane-rubric').innerHTML=`<p class="kicker">ASSESSMENT CRITERIA</p><h3 class="section-title">評価ルーブリック</h3><div class="rubrics">${r.rubric.map(x=>`<article class="rubric"><div class="rubric-top"><span class="rubric-name">${esc(x.criterion)}</span><span class="points">${esc(x.points)} 点</span></div><p>${esc(x.description)}</p></article>`).join('')}</div>`;$('#pane-grade').innerHTML=`<p class="kicker">FEEDBACK / ${demo?'REFERENCE ONLY':'FORMATIVE'}</p><h3 class="section-title">採点・添削</h3><div class="score"><div class="score-num">${esc(r.totalScore)}<span> / ${esc(r.maxScore)}</span></div><div><p class="score-label">${demo?'ローカル簡易評価':'総合評価'}</p><p class="score-summary">${esc(r.summary)}</p></div></div><div>${r.evaluations.map(x=>`<div class="eval"><div class="eval-top"><span>${esc(x.criterion)}</span><span class="eval-score">${esc(x.score)} / ${esc(x.maxScore)}</span></div><p>${esc(x.comment)}</p></div>`).join('')}</div><div class="feedback"><h3>良かった点</h3><p>${esc(r.strengths)}</p></div><div class="feedback"><h3>次に見直す点</h3><p>${esc(r.improvements)}</p></div><div class="feedback"><h3>書き換え例</h3><p>${esc(r.rewriteExample)}</p></div>${demo?'<div class="note">この点数は語数と表層的な表現のみから算出した参考値です。実際の採点に使用しないでください。</div>':''}`;$('#resultMode').textContent=demo?'ローカル簡易評価':`AI評価 · ${settings.model}`;activate('tab-answer')}
-$('#generate').addEventListener('click',async()=>{const d={prompt:fields.prompt.value.trim(),question:fields.question.value.trim(),essay:fields.essay.value.trim(),minWords:Math.max(0,Number(fields.minWords.value)||0),maxWords:Math.max(1,Number(fields.maxWords.value)||1)};if(!d.prompt||!d.question||!d.essay){toast('課題文・設問・答案をすべて入力してください。');return}if(d.minWords>d.maxWords){toast('字数の下限は上限以下にしてください。');return}const btn=$('#generate'),connected=Boolean(settings.endpoint&&settings.model&&apiKey);btn.disabled=true;btn.innerHTML='<span class="spinner" style="width:15px;height:15px;margin:0;border-width:2px;border-color:#ffffff66;border-top-color:#fff"></span>評価レポートを作成中…';output.querySelectorAll('.pane').forEach(p=>p.hidden=true);const loading=document.createElement('div');loading.className='loading';loading.innerHTML='<div class="spinner"></div><span>課題と答案を読み込んでいます</span>';output.append(loading);try{const result=connected?await requestEvaluation(d):localEvaluation(d);loading.remove();$('.empty').hidden=true;render(result,!connected);if(!connected)toast('デモ評価を作成しました。内容の採点にはAI接続を設定してください。')}catch(error){loading.remove();toast(`評価を作成できませんでした: ${error.message}`);$('.empty').hidden=false}finally{btn.disabled=false;btn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3 1.9 5.8L20 11l-6.1 2.2L12 19l-2-5.8L4 11l6-2.2L12 3Z"/><path d="m19 15 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z"/></svg>模範解答・基準・採点を作成'}});
+$('#generate').addEventListener('click',async()=>{
+  const d=currentInput();
+  if(!d.prompt||!d.question||!d.essay){toast('課題文・設問・答案をすべて入力してください。');return}
+  if(d.minWords>d.maxWords){toast('字数の下限は上限以下にしてください。');return}
+  const btn=$('#generate'),connected=Boolean(settings.endpoint&&settings.model&&apiKey);
+  btn.disabled=true;
+  btn.innerHTML='<span class="spinner" style="width:15px;height:15px;margin:0;border-width:2px;border-color:#ffffff66;border-top-color:#fff"></span>評価レポートを作成中…';
+  output.querySelectorAll('.pane').forEach(p=>p.hidden=true);
+  const loading=document.createElement('div');
+  loading.className='loading';
+  loading.innerHTML='<div class="spinner"></div><span>課題と答案を読み込んでいます</span>';
+  output.append(loading);
+  try{
+    const result=connected?await requestEvaluation(d):localEvaluation(d);
+    loading.remove();
+    $('.empty').hidden=true;
+    evaluatedInput=JSON.stringify(d);
+    render(result,!connected);
+    updateEvaluationFreshness();
+    if(!connected)toast('デモ評価を作成しました。内容の採点にはAI接続を設定してください。');
+  }catch(error){
+    loading.remove();
+    toast(`評価を作成できませんでした: ${error.message}`);
+    $('.empty').hidden=false;
+  }finally{
+    btn.disabled=false;
+    btn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3 1.9 5.8L20 11l-6.1 2.2L12 19l-2-5.8L4 11l6-2.2L12 3Z"/><path d="m19 15 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z"/></svg>模範解答・基準・採点を作成';
+  }
+});
 function openSettings(){$('#apiEndpoint').value=settings.endpoint;$('#modelName').value=settings.model;$('#apiKey').value=apiKey;dialog.showModal()}$('#openSettings').addEventListener('click',openSettings);$('#openSettingsNav').addEventListener('click',openSettings);$('#closeSettings').addEventListener('click',()=>dialog.close());$('#settingsForm').addEventListener('submit',e=>{e.preventDefault();settings={endpoint:$('#apiEndpoint').value.trim(),model:$('#modelName').value.trim()||defaults.model};apiKey=$('#apiKey').value.trim();localStorage.setItem('essay-feedback-settings',JSON.stringify(settings));updateConnection();dialog.close();toast(apiKey?'AI接続設定を保存しました。キーはこのタブ内だけで保持します。':'設定を保存しました。APIキーを入力するとAI評価を利用できます。')});$('#clearSettings').addEventListener('click',()=>{settings={...defaults};apiKey='';localStorage.removeItem('essay-feedback-settings');updateConnection();dialog.close();toast('AI接続を解除しました。')});updateConnection();
 </script>
 <script>
